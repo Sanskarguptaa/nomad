@@ -1,0 +1,32 @@
+---
+# Multi-environment configuration for Nomad
+
+- name: Set environment-specific variables
+  set_fact:
+    nomad_env_config: "{{ nomad_environments[nomad_environment] | default({}) }}"
+  when: nomad_environment is defined and nomad_environments is defined
+
+- name: Display environment configuration
+  debug:
+    msg: "Using environment: {{ nomad_environment | default('default') }}"
+  when: nomad_environment is defined
+
+- name: Create environment-specific configuration
+  template:
+    src: nomad_environment.hcl.j2
+    dest: /etc/nomad.d/environment.hcl
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0640'
+  notify: Restart Nomad
+  when: nomad_environment is defined and nomad_environments is defined
+
+- name: Create namespace configuration (server only)
+  template:
+    src: nomad_namespaces.hcl.j2
+    dest: /etc/nomad.d/namespaces.hcl
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0640'
+  notify: Restart Nomad
+  when: nomad_is_server | default(false) | bool and nomad_namespaces is defined

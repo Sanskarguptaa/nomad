@@ -1,0 +1,31 @@
+# Namespace configuration for Nomad
+
+{% for namespace in nomad_namespaces | default([]) %}
+namespace "{{ namespace.name }}" {
+  description = "{{ namespace.description | default('') }}"
+  
+  {% if namespace.quota is defined %}
+  quota = "{{ namespace.quota }}"
+  {% endif %}
+  
+  {% if namespace.meta is defined %}
+  meta {
+    {% for key, value in namespace.meta.items() %}
+    {{ key }} = "{{ value }}"
+    {% endfor %}
+  }
+  {% endif %}
+  
+  {% if namespace.capabilities is defined %}
+  capabilities {
+    {% if namespace.capabilities.enabled_task_drivers is defined %}
+    enabled_task_drivers = [{% for driver in namespace.capabilities.enabled_task_drivers %}"{{ driver }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+    {% endif %}
+    
+    {% if namespace.capabilities.disabled_task_drivers is defined %}
+    disabled_task_drivers = [{% for driver in namespace.capabilities.disabled_task_drivers %}"{{ driver }}"{% if not loop.last %}, {% endif %}{% endfor %}]
+    {% endif %}
+  }
+  {% endif %}
+}
+{% endfor %}
