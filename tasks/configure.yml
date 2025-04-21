@@ -23,6 +23,28 @@
     mode: '0640'
   notify: Restart Nomad
 
+- name: Create examples directory on client nodes
+  file:
+    path: /opt/nomad/examples
+    state: directory
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0755'
+  when: nomad_is_client | default(false) | bool
+
+- name: Copy example job files to client nodes
+  copy:
+    src: "{{ item }}"
+    dest: /opt/nomad/examples/
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0644'
+  with_items:
+    - example_gpu_job.nomad
+    - example_non_gpu_job.nomad
+    - GPU_COMPATIBILITY.md
+  when: nomad_is_client | default(false) | bool
+
 - name: Set correct permissions on Nomad config directory
   file:
     path: /etc/nomad.d

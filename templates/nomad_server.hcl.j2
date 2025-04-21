@@ -2,6 +2,7 @@ data_dir = "{{ nomad_data_dir }}"
 
 server {
   enabled          = true
+  bootstrap_expect = 1
   bootstrap_expect = {{ groups['nomad_server'] | length }}
 }
 

@@ -1,0 +1,132 @@
+---
+# GPU detection and setup tasks
+
+- name: Check if NVIDIA GPU is present
+  command: lspci | grep -i nvidia
+  register: nvidia_gpu_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Set GPU availability fact
+  set_fact:
+    has_nvidia_gpu: "{{ nvidia_gpu_check.rc == 0 }}"
+
+- name: Debug GPU detection
+  debug:
+    msg: "NVIDIA GPU detected: {{ has_nvidia_gpu }}"
+
+- name: Install NVIDIA drivers and tools (Ubuntu/Debian)
+  block:
+    - name: Add NVIDIA repository key
+      apt_key:
+        url: https://nvidia.github.io/nvidia-docker/gpgkey
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add NVIDIA repository (Ubuntu)
+      apt_repository:
+        repo: "deb https://nvidia.github.io/libnvidia-container/ubuntu{{ ansible_distribution_version }}/$(ARCH) /"
+        state: present
+        filename: nvidia-container-toolkit
+      when: ansible_distribution == "Ubuntu"
+
+    - name: Add NVIDIA repository (Debian)
+      apt_repository:
+        repo: "deb https://nvidia.github.io/libnvidia-container/debian{{ ansible_distribution_version }}/$(ARCH) /"
+        state: present
+        filename: nvidia-container-toolkit
+      when: ansible_distribution == "Debian"
+
+    - name: Install NVIDIA drivers and CUDA
+      apt:
+        name:
+          - nvidia-driver-{{ nvidia_driver_version | default('525') }}
+          - nvidia-cuda-toolkit
+        state: present
+        update_cache: yes
+      register: nvidia_driver_install
+      ignore_errors: true  # Some systems might need specific driver versions
+
+    - name: Install NVIDIA Container Toolkit
+      apt:
+        name:
+          - nvidia-container-toolkit
+          - nvidia-container-runtime
+        state: present
+        update_cache: yes
+  when: has_nvidia_gpu and ansible_os_family == "Debian"
+
+- name: Install NVIDIA drivers and tools (RHEL/CentOS)
+  block:
+    - name: Add NVIDIA repository (RHEL/CentOS)
+      yum_repository:
+        name: nvidia-container-toolkit
+        description: NVIDIA Container Toolkit repository
+        baseurl: https://nvidia.github.io/libnvidia-container/centos{{ ansible_distribution_major_version }}/$(ARCH)
+        gpgcheck: yes
+        gpgkey: https://nvidia.github.io/nvidia-docker/gpgkey
+        enabled: yes
+      when: ansible_os_family == "RedHat"
+
+    - name: Install NVIDIA drivers and CUDA (RHEL/CentOS)
+      yum:
+        name:
+          - kmod-nvidia
+          - cuda
+        state: present
+      register: nvidia_driver_install_rhel
+      ignore_errors: true
+
+    - name: Install NVIDIA Container Toolkit (RHEL/CentOS)
+      yum:
+        name:
+          - nvidia-container-toolkit
+          - nvidia-container-runtime
+        state: present
+  when: has_nvidia_gpu and ansible_os_family == "RedHat"
+
+- name: Download Nomad NVIDIA device plugin
+  get_url:
+    url: "https://releases.hashicorp.com/nomad-device-nvidia/{{ nomad_nvidia_plugin_version | default('0.12.1') }}/nomad-device-nvidia_{{ nomad_nvidia_plugin_version | default('0.12.1') }}_linux_amd64.zip"
+    dest: /tmp/nomad-device-nvidia.zip
+  when: has_nvidia_gpu
+
+- name: Create plugin directory
+  file:
+    path: "{{ nomad_plugin_dir }}"
+    state: directory
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0755'
+  when: has_nvidia_gpu
+
+- name: Unzip Nomad NVIDIA device plugin
+  unarchive:
+    src: /tmp/nomad-device-nvidia.zip
+    dest: "{{ nomad_plugin_dir }}"
+    remote_src: yes
+    mode: '0755'
+  when: has_nvidia_gpu
+
+- name: Configure Docker to use NVIDIA runtime
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "default-runtime": "nvidia",
+        "runtimes": {
+          "nvidia": {
+            "path": "/usr/bin/nvidia-container-runtime",
+            "runtimeArgs": []
+          }
+        }
+      }
+    mode: '0644'
+  register: docker_config
+  when: has_nvidia_gpu
+
+- name: Restart Docker service if configuration changed
+  systemd:
+    name: docker
+    state: restarted
+  when: has_nvidia_gpu and docker_config.changed

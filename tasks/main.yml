@@ -13,6 +13,11 @@
   import_tasks: install.yml
   # when: nomad_installed.stdout != "active"
 
+# Setup GPU support for client nodes
+- name: Setup GPU support (client nodes only)
+  import_tasks: gpu_setup.yml
+  when: nomad_is_client | default(false) | bool
+
 # Security configuration
 - name: Configure security
   import_tasks: security.yml
@@ -42,6 +47,10 @@
 - name: Configure Nomad
   import_tasks: configure.yml
   # when: nomad_installed.stdout == "active"
+
+# Validate the configuration
+- name: Validate Nomad setup
+  import_tasks: validate.yml
 
 # Validate configuration
 - name: Validate Nomad configuration

@@ -6,16 +6,17 @@ server {
 
 client {
   enabled   = true
+  servers   = ["{{ hostvars[groups['nomad_server'][0]].ansible_host }}:4647"]
   servers   = [{% for server in groups['nomad_server'] %}"{{ hostvars[server].ansible_host }}:4647"{% if not loop.last %}, {% endif %}{% endfor %}]
   alloc_dir = "{{ nomad_alloc_dir }}"
-  
+
   # Reserved resources configuration
   reserved {
     cpu    = {{ nomad_reserved_cpu | default(500) }}
     memory = {{ nomad_reserved_memory | default(512) }}
     disk   = {{ nomad_reserved_disk | default(1024) }}
   }
-  
+
   # Node metadata
   meta {
     "node.role" = "client"
@@ -25,7 +26,7 @@ client {
     {% endfor %}
     {% endif %}
   }
-  
+
   # Client options
   options {
     "driver.raw_exec.enable" = "{{ nomad_raw_exec_enabled | default(false) | lower }}"
@@ -56,11 +57,11 @@ consul {
 tls {
   http = true
   rpc  = true
-  
+
   ca_file   = "{{ nomad_ca_file }}"
   cert_file = "{{ nomad_cert_file }}"
   key_file  = "{{ nomad_key_file }}"
-  
+
   verify_server_hostname = {{ nomad_verify_server_hostname | default(true) | lower }}
   verify_https_client    = {{ nomad_verify_https_client | default(true) | lower }}
 }
@@ -80,7 +81,7 @@ plugin "nomad-device-nvidia" {
   config {
     enabled = true
     fingerprint_period = "1m"
-    
+
     # NVIDIA specific configurations
     nvidia_runtime = "nvidia"
     allowed_capabilities = ["compute", "utility"]
