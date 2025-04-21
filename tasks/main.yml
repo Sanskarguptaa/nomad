@@ -1,0 +1,28 @@
+---
+- name: Check if Nomad is installed
+  command: systemctl is-active nomad
+  register: nomad_installed
+  ignore_errors: true
+  changed_when: false
+
+- name: Debug Nomad status
+  debug:
+    msg: "Nomad status: {{ nomad_installed.stdout }}"
+
+- name: Install Nomad
+  import_tasks: install.yml
+  # when: nomad_installed.stdout != "active"
+
+# Setup GPU support for client nodes
+- name: Setup GPU support (client nodes only)
+  import_tasks: gpu_setup.yml
+  when: nomad_is_client | default(false) | bool
+
+- name: Configure Nomad
+  import_tasks: configure.yml
+  # when: nomad_installed.stdout == "active"
+
+# Validate the configuration
+- name: Validate Nomad setup
+  import_tasks: validate.yml
+  when: nomad_installed.stdout == "active"

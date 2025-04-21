@@ -1,0 +1,49 @@
+---
+# Validation tasks for Nomad configuration
+
+- name: Validate Nomad configuration
+  command: nomad validate /etc/nomad.d/nomad.hcl
+  register: nomad_validate
+  changed_when: false
+  failed_when: nomad_validate.rc != 0
+  ignore_errors: true
+
+- name: Display validation results
+  debug:
+    msg: "Nomad configuration validation: {{ 'PASSED' if nomad_validate.rc == 0 else 'FAILED - ' + nomad_validate.stderr }}"
+
+- name: Check Nomad service status
+  command: systemctl status nomad
+  register: nomad_status
+  changed_when: false
+  failed_when: false
+  ignore_errors: true
+
+- name: Display Nomad service status
+  debug:
+    msg: "Nomad service status: {{ 'RUNNING' if 'active (running)' in nomad_status.stdout else 'NOT RUNNING' }}"
+
+- name: Check GPU detection (client nodes only)
+  block:
+    - name: Check if NVIDIA drivers are installed
+      command: nvidia-smi
+      register: nvidia_smi_check
+      changed_when: false
+      failed_when: false
+      ignore_errors: true
+
+    - name: Display GPU status
+      debug:
+        msg: "NVIDIA GPU drivers: {{ 'INSTALLED' if nvidia_smi_check.rc == 0 else 'NOT INSTALLED' }}"
+
+    - name: Check NVIDIA container runtime
+      command: docker info
+      register: docker_info
+      changed_when: false
+      failed_when: false
+      ignore_errors: true
+
+    - name: Display NVIDIA container runtime status
+      debug:
+        msg: "NVIDIA container runtime: {{ 'CONFIGURED' if 'nvidia' in docker_info.stdout else 'NOT CONFIGURED' }}"
+  when: nomad_is_client | default(false) | bool and has_nvidia_gpu | default(false) | bool
