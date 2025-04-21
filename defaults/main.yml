@@ -1,5 +1,5 @@
 ---
-# General Nomad configuration
+# Basic configuration
 nomad_user: "root"
 nomad_group: "root"
 nomad_data_dir: "/opt/nomad"
@@ -18,3 +18,70 @@ nomad_reserved_disk: 1024     # MB
 nvidia_driver_version: "525"  # Default NVIDIA driver version
 nomad_nvidia_plugin_version: "0.12.1"  # Default Nomad NVIDIA plugin version
 has_nvidia_gpu: false  # Will be set dynamically by GPU detection task
+
+# Security configuration
+nomad_enable_tls: false
+nomad_generate_ca: false
+nomad_ca_file: "/etc/nomad.d/tls/ca.pem"
+nomad_cert_file: "/etc/nomad.d/tls/server.pem"
+nomad_key_file: "/etc/nomad.d/tls/server-key.pem"
+nomad_verify_server_hostname: true
+nomad_verify_https_client: true
+nomad_configure_firewall: false
+
+# High availability configuration
+nomad_ha_enabled: false
+nomad_server_bootstrap_expect: 3
+nomad_redundancy_zones: false
+nomad_upgrade_migration: true
+
+# Monitoring configuration
+nomad_enable_monitoring: true
+nomad_install_node_exporter: true
+nomad_configure_prometheus: true
+nomad_configure_grafana: true
+node_exporter_version: "1.6.1"
+nomad_statsite_enabled: false
+nomad_statsd_enabled: false
+nomad_datadog_enabled: false
+nomad_circonus_enabled: false
+
+# Backup configuration
+nomad_enable_backups: false
+nomad_backup_dir: "/opt/nomad/backups"
+nomad_backup_retention_days: 30
+nomad_backup_hour: 2
+nomad_enable_scheduled_backups: false
+
+# Multi-environment configuration
+# Example environment configuration:
+# nomad_environments:
+#   dev:
+#     datacenter: "dc1-dev"
+#     region: "us-west-dev"
+#     node_class: "dev"
+#     meta:
+#       env: "development"
+#     options:
+#       "docker.cleanup.image": "true"
+#   prod:
+#     datacenter: "dc1-prod"
+#     region: "us-west-prod"
+#     node_class: "prod"
+#     meta:
+#       env: "production"
+#     server_options:
+#       encrypt: "your-gossip-encryption-key"
+#     limits:
+#       http_max_conns_per_client: 100
+
+# Example namespace configuration:
+# nomad_namespaces:
+#   - name: "dev"
+#     description: "Development namespace"
+#     quota: "dev-quota"
+#   - name: "prod"
+#     description: "Production namespace"
+#     quota: "prod-quota"
+#     capabilities:
+#       enabled_task_drivers: ["docker", "exec", "raw_exec"]

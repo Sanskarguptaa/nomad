@@ -1,0 +1,93 @@
+#!/bin/bash
+# Nomad restore script
+# This script restores Nomad from a backup
+
+set -e
+
+# Variables
+BACKUP_DIR="{{ nomad_backup_dir }}"
+DATA_DIR="{{ nomad_data_dir }}"
+CONFIG_DIR="/etc/nomad.d"
+
+# Check if a date parameter was provided
+if [ -z "$1" ]; then
+  echo "Error: No backup date specified."
+  echo "Usage: $0 BACKUP_DATE"
+  echo "Example: $0 2025-04-08"
+  exit 1
+fi
+
+BACKUP_DATE="$1"
+BACKUP_PATH="${BACKUP_DIR}/${BACKUP_DATE}"
+
+# Check if the backup exists
+if [ ! -d "${BACKUP_PATH}" ]; then
+  echo "Error: Backup for date ${BACKUP_DATE} not found at ${BACKUP_PATH}"
+  echo "Available backups:"
+  find "${BACKUP_DIR}" -maxdepth 1 -type d -name "20*" | sort
+  exit 1
+fi
+
+echo "Starting Nomad restore from backup at ${BACKUP_PATH}"
+echo "WARNING: This will stop Nomad and replace the current data and configuration."
+echo "Press Ctrl+C within 10 seconds to abort..."
+sleep 10
+
+# Stop Nomad service
+echo "Stopping Nomad service..."
+systemctl stop nomad
+
+# Backup current data and config (just in case)
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+echo "Creating a backup of current data before restore..."
+mv "${DATA_DIR}" "${DATA_DIR}.pre_restore.${TIMESTAMP}"
+mkdir -p "${DATA_DIR}"
+
+echo "Creating a backup of current configuration before restore..."
+cp -r "${CONFIG_DIR}" "${CONFIG_DIR}.pre_restore.${TIMESTAMP}"
+
+# Restore data directory
+echo "Restoring Nomad data directory..."
+rsync -a --delete "${BACKUP_PATH}/data/" "${DATA_DIR}/"
+
+# Restore configuration
+echo "Restoring Nomad configuration..."
+rsync -a "${BACKUP_PATH}/config/" "${CONFIG_DIR}/"
+
+# Set correct permissions
+echo "Setting correct permissions..."
+chown -R {{ nomad_user }}:{{ nomad_group }} "${DATA_DIR}" "${CONFIG_DIR}"
+chmod 750 "${DATA_DIR}" "${CONFIG_DIR}"
+find "${CONFIG_DIR}" -type f -exec chmod 640 {} \;
+
+# Start Nomad service
+echo "Starting Nomad service..."
+systemctl start nomad
+
+# Check if Nomad started successfully
+echo "Waiting for Nomad to start..."
+for i in {1..30}; do
+  if systemctl is-active --quiet nomad; then
+    echo "Nomad service started successfully."
+    break
+  fi
+  
+  if [ $i -eq 30 ]; then
+    echo "Warning: Nomad service did not start within the expected time."
+    echo "Check the service status with: systemctl status nomad"
+  fi
+  
+  sleep 2
+done
+
+# Restore snapshot if available (for server nodes)
+if [ -f "${BACKUP_PATH}/nomad-snapshot.snap" ] && grep -q "server {" /etc/nomad.d/nomad.hcl && grep -q "enabled = true" /etc/nomad.d/nomad.hcl; then
+  echo "Restoring Nomad server snapshot..."
+  nomad operator snapshot restore "${BACKUP_PATH}/nomad-snapshot.snap"
+fi
+
+echo "Restore completed at $(date)"
+echo "Previous data backed up at: ${DATA_DIR}.pre_restore.${TIMESTAMP}"
+echo "Previous config backed up at: ${CONFIG_DIR}.pre_restore.${TIMESTAMP}"
+
+exit 0

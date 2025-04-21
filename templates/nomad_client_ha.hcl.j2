@@ -1,0 +1,20 @@
+client {
+  # HA Configuration for clients
+  # Connect to multiple server nodes for redundancy
+  servers = [{{ nomad_server_list }}]
+  
+  # Increase server_join retry attempts for better resilience
+  server_join {
+    retry_join = [{{ nomad_server_list }}]
+    retry_max = 10
+    retry_interval = "15s"
+  }
+  
+  # Node reconnect timeout
+  node_reconnect_timeout = "24h"
+  
+  # Node pool for targeted job placement
+  {% if nomad_node_pool | default('') != '' %}
+  node_pool = "{{ nomad_node_pool }}"
+  {% endif %}
+}

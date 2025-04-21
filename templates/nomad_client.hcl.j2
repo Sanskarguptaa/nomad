@@ -7,13 +7,35 @@ server {
 client {
   enabled   = true
   servers   = ["{{ hostvars[groups['nomad_server'][0]].ansible_host }}:4647"]
+  servers   = [{% for server in groups['nomad_server'] %}"{{ hostvars[server].ansible_host }}:4647"{% if not loop.last %}, {% endif %}{% endfor %}]
   alloc_dir = "{{ nomad_alloc_dir }}"
-  
+
   # Reserved resources configuration
   reserved {
-    cpu = {{ nomad_reserved_cpu | default(500) }}
+    cpu    = {{ nomad_reserved_cpu | default(500) }}
     memory = {{ nomad_reserved_memory | default(512) }}
-    disk = {{ nomad_reserved_disk | default(1024) }}
+    disk   = {{ nomad_reserved_disk | default(1024) }}
+  }
+
+  # Node metadata
+  meta {
+    "node.role" = "client"
+    {% if nomad_node_meta is defined %}
+    {% for key, value in nomad_node_meta.items() %}
+    "{{ key }}" = "{{ value }}"
+    {% endfor %}
+    {% endif %}
+  }
+
+  # Client options
+  options {
+    "driver.raw_exec.enable" = "{{ nomad_raw_exec_enabled | default(false) | lower }}"
+    "docker.privileged.enabled" = "{{ nomad_docker_privileged | default(true) | lower }}"
+    {% if nomad_client_options is defined %}
+    {% for key, value in nomad_client_options.items() %}
+    "{{ key }}" = "{{ value }}"
+    {% endfor %}
+    {% endif %}
   }
 }
 
@@ -30,12 +52,36 @@ consul {
   address = "{{ consul_address }}"
 }
 
+{% if nomad_enable_tls | default(false) | bool %}
+# TLS configuration
+tls {
+  http = true
+  rpc  = true
+
+  ca_file   = "{{ nomad_ca_file }}"
+  cert_file = "{{ nomad_cert_file }}"
+  key_file  = "{{ nomad_key_file }}"
+
+  verify_server_hostname = {{ nomad_verify_server_hostname | default(true) | lower }}
+  verify_https_client    = {{ nomad_verify_https_client | default(true) | lower }}
+}
+{% endif %}
+
+{% if vault_address is defined %}
+# Vault integration
+vault {
+  enabled = true
+  address = "http://{{ vault_address }}"
+}
+{% endif %}
+
+# Plugin configuration
 {% if has_nvidia_gpu | default(false) %}
 plugin "nomad-device-nvidia" {
   config {
     enabled = true
     fingerprint_period = "1m"
-    
+
     # NVIDIA specific configurations
     nvidia_runtime = "nvidia"
     allowed_capabilities = ["compute", "utility"]
@@ -44,4 +90,16 @@ plugin "nomad-device-nvidia" {
 {% else %}
 # No NVIDIA GPU detected on this node
 # GPU jobs will not be scheduled here
+{% endif %}
+
+# Host volume configuration
+{% if nomad_host_volumes is defined %}
+{% for volume in nomad_host_volumes %}
+client {
+  host_volume "{{ volume.name }}" {
+    path      = "{{ volume.path }}"
+    read_only = {{ volume.read_only | default(false) | lower }}
+  }
+}
+{% endfor %}
 {% endif %}

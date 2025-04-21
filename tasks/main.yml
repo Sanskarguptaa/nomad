@@ -18,6 +18,32 @@
   import_tasks: gpu_setup.yml
   when: nomad_is_client | default(false) | bool
 
+# Security configuration
+- name: Configure security
+  import_tasks: security.yml
+  when: nomad_enable_tls | default(false) | bool
+
+# High availability setup
+- name: Configure high availability
+  import_tasks: ha_setup.yml
+  when: nomad_ha_enabled | default(false) | bool or groups['nomad_server'] | length > 1
+
+# Multi-environment configuration
+- name: Configure environment-specific settings
+  import_tasks: multi_env.yml
+  when: nomad_environment is defined
+
+# Monitoring configuration
+- name: Configure monitoring
+  import_tasks: monitoring.yml
+  when: nomad_enable_monitoring | default(true) | bool
+
+# Backup configuration
+- name: Configure backup and disaster recovery
+  import_tasks: backup.yml
+  when: nomad_enable_backups | default(false) | bool
+
+# Basic configuration
 - name: Configure Nomad
   import_tasks: configure.yml
   # when: nomad_installed.stdout == "active"
@@ -25,4 +51,16 @@
 # Validate the configuration
 - name: Validate Nomad setup
   import_tasks: validate.yml
+
+# Validate configuration
+- name: Validate Nomad configuration
+  command: nomad validate /etc/nomad.d/
+  register: nomad_validate
+  changed_when: false
+  failed_when: false
+  when: nomad_installed.stdout == "active"
+
+- name: Display validation results
+  debug:
+    msg: "Nomad configuration validation: {{ 'PASSED' if nomad_validate.rc == 0 else 'FAILED - ' + nomad_validate.stderr }}"
   when: nomad_installed.stdout == "active"

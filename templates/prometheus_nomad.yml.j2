@@ -1,0 +1,43 @@
+---
+# Prometheus scrape configuration for Nomad
+scrape_configs:
+  - job_name: 'nomad_servers'
+    scrape_interval: 15s
+    metrics_path: /v1/metrics
+    params:
+      format: ['prometheus']
+    scheme: http
+    static_configs:
+      - targets:
+        {% for server in groups['nomad_server'] %}
+        - '{{ hostvars[server].ansible_host }}:4646'
+        {% endfor %}
+        labels:
+          service: 'nomad-server'
+
+  - job_name: 'nomad_clients'
+    scrape_interval: 15s
+    metrics_path: /v1/metrics
+    params:
+      format: ['prometheus']
+    scheme: http
+    static_configs:
+      - targets:
+        {% for client in groups['nomad_client'] %}
+        - '{{ hostvars[client].ansible_host }}:4646'
+        {% endfor %}
+        labels:
+          service: 'nomad-client'
+
+  - job_name: 'node_exporters'
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+        {% for server in groups['nomad_server'] %}
+        - '{{ hostvars[server].ansible_host }}:9100'
+        {% endfor %}
+        {% for client in groups['nomad_client'] %}
+        - '{{ hostvars[client].ansible_host }}:9100'
+        {% endfor %}
+        labels:
+          service: 'node-exporter'

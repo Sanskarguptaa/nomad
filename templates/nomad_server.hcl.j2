@@ -3,6 +3,7 @@ data_dir = "{{ nomad_data_dir }}"
 server {
   enabled          = true
   bootstrap_expect = 1
+  bootstrap_expect = {{ groups['nomad_server'] | length }}
 }
 
 client {
@@ -21,3 +22,48 @@ advertise {
 consul {
   address = "{{ consul_address }}"
 }
+
+{% if nomad_enable_tls | default(false) | bool %}
+# TLS configuration
+tls {
+  http = true
+  rpc  = true
+  
+  ca_file   = "{{ nomad_ca_file }}"
+  cert_file = "{{ nomad_cert_file }}"
+  key_file  = "{{ nomad_key_file }}"
+  
+  verify_server_hostname = {{ nomad_verify_server_hostname | default(true) | lower }}
+  verify_https_client    = {{ nomad_verify_https_client | default(true) | lower }}
+}
+{% endif %}
+
+{% if vault_address is defined %}
+# Vault integration
+vault {
+  enabled = true
+  address = "http://{{ vault_address }}"
+}
+{% endif %}
+
+# ACL configuration
+acl {
+  enabled = {{ nomad_acl_enabled | default(false) | lower }}
+}
+
+# Audit logging
+{% if nomad_audit_enabled | default(false) | bool %}
+audit {
+  enabled = true
+  sink "file" {
+    type   = "file"
+    format = "json"
+    path   = "/var/log/nomad/audit.log"
+    mode   = "file"
+    rotate {
+      max_files     = 10
+      max_file_size = 100
+    }
+  }
+}
+{% endif %}
