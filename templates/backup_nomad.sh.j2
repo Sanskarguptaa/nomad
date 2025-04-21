@@ -1,0 +1,59 @@
+#!/bin/bash
+# Nomad backup script
+# This script creates a backup of the Nomad data directory and configuration
+
+set -e
+
+# Variables
+BACKUP_DIR="{{ nomad_backup_dir }}"
+DATA_DIR="{{ nomad_data_dir }}"
+CONFIG_DIR="/etc/nomad.d"
+DATE=$(date +%Y-%m-%d)
+BACKUP_PATH="${BACKUP_DIR}/${DATE}"
+RETENTION_DAYS={{ nomad_backup_retention_days | default('30') }}
+
+# Create backup directory for today
+mkdir -p "${BACKUP_PATH}"
+
+echo "Starting Nomad backup at $(date)"
+
+# Check if Nomad is running
+if systemctl is-active --quiet nomad; then
+  echo "Nomad is running. Taking a snapshot of the Nomad state..."
+  
+  # Create a Nomad snapshot (if server)
+  if [ -f "/etc/nomad.d/nomad.hcl" ] && grep -q "server {" /etc/nomad.d/nomad.hcl && grep -q "enabled = true" /etc/nomad.d/nomad.hcl; then
+    echo "Taking Nomad server snapshot..."
+    nomad operator snapshot save "${BACKUP_PATH}/nomad-snapshot.snap"
+  fi
+else
+  echo "Nomad is not running. Proceeding with file-based backup only."
+fi
+
+# Backup data directory
+echo "Backing up Nomad data directory..."
+rsync -a --delete "${DATA_DIR}/" "${BACKUP_PATH}/data/"
+
+# Backup configuration
+echo "Backing up Nomad configuration..."
+rsync -a --delete "${CONFIG_DIR}/" "${BACKUP_PATH}/config/"
+
+# Create a backup info file
+cat > "${BACKUP_PATH}/backup_info.txt" << EOF
+Nomad Backup
+Date: $(date)
+Hostname: $(hostname)
+Nomad Version: $(nomad version 2>/dev/null || echo "Unknown")
+EOF
+
+# Clean up old backups
+echo "Cleaning up backups older than ${RETENTION_DAYS} days..."
+find "${BACKUP_DIR}" -maxdepth 1 -type d -name "20*" -mtime +${RETENTION_DAYS} -exec rm -rf {} \;
+
+echo "Backup completed successfully at $(date)"
+echo "Backup stored at: ${BACKUP_PATH}"
+
+# Create a symlink to the latest backup
+ln -sf "${BACKUP_PATH}" "${BACKUP_DIR}/latest"
+
+exit 0

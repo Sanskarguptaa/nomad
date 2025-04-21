@@ -1,0 +1,50 @@
+---
+# High Availability setup for Nomad
+
+- name: Check if multiple Nomad servers are defined
+  set_fact:
+    nomad_ha_enabled: "{{ groups['nomad_server'] | length > 1 }}"
+
+- name: Display HA status
+  debug:
+    msg: "Nomad HA is {{ 'ENABLED' if nomad_ha_enabled else 'DISABLED' }} ({{ groups['nomad_server'] | length }} server nodes)"
+
+- name: Configure server join for HA
+  block:
+    - name: Create retry_join configuration
+      set_fact:
+        nomad_retry_join: "{% for server in groups['nomad_server'] %}{% if server != inventory_hostname %}\"{{ hostvars[server].ansible_host }}:4648\"{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}"
+
+    - name: Debug retry_join configuration
+      debug:
+        var: nomad_retry_join
+
+    - name: Update server configuration for HA
+      template:
+        src: nomad_server_ha.hcl.j2
+        dest: /etc/nomad.d/server_ha.hcl
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0640'
+      notify: Restart Nomad
+  when: nomad_ha_enabled and nomad_is_server | default(false) | bool
+
+- name: Configure client for HA servers
+  block:
+    - name: Create servers list for clients
+      set_fact:
+        nomad_server_list: "{% for server in groups['nomad_server'] %}\"{{ hostvars[server].ansible_host }}:4647\"{% if not loop.last %}, {% endif %}{% endfor %}"
+
+    - name: Debug servers list
+      debug:
+        var: nomad_server_list
+
+    - name: Update client configuration for HA
+      template:
+        src: nomad_client_ha.hcl.j2
+        dest: /etc/nomad.d/client_ha.hcl
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0640'
+      notify: Restart Nomad
+  when: nomad_ha_enabled and nomad_is_client | default(false) | bool

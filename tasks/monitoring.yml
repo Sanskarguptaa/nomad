@@ -1,0 +1,100 @@
+---
+# Monitoring setup for Nomad
+
+- name: Create Nomad telemetry configuration
+  template:
+    src: nomad_telemetry.hcl.j2
+    dest: /etc/nomad.d/telemetry.hcl
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0640'
+  notify: Restart Nomad
+
+- name: Install node_exporter for host metrics
+  block:
+    - name: Download node_exporter
+      get_url:
+        url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version | default('1.6.1') }}/node_exporter-{{ node_exporter_version | default('1.6.1') }}.linux-amd64.tar.gz"
+        dest: /tmp/node_exporter.tar.gz
+        mode: '0644'
+
+    - name: Create node_exporter directory
+      file:
+        path: /opt/node_exporter
+        state: directory
+        mode: '0755'
+
+    - name: Extract node_exporter
+      unarchive:
+        src: /tmp/node_exporter.tar.gz
+        dest: /opt/node_exporter
+        remote_src: yes
+        extra_opts: "--strip-components=1"
+        creates: /opt/node_exporter/node_exporter
+
+    - name: Create node_exporter systemd service
+      copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Node Exporter
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          User=root
+          Group=root
+          Type=simple
+          ExecStart=/opt/node_exporter/node_exporter --collector.systemd --collector.processes
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Enable and start node_exporter
+      systemd:
+        name: node_exporter
+        state: started
+        enabled: yes
+        daemon_reload: yes
+  when: nomad_install_node_exporter | default(true) | bool
+
+- name: Configure Prometheus scrape job for Nomad
+  block:
+    - name: Create Prometheus configuration directory
+      file:
+        path: /etc/prometheus/conf.d
+        state: directory
+        mode: '0755'
+      delegate_to: "{{ groups['server'][0] }}"
+      run_once: true
+
+    - name: Create Nomad scrape configuration
+      template:
+        src: prometheus_nomad.yml.j2
+        dest: /etc/prometheus/conf.d/nomad.yml
+        mode: '0644'
+      delegate_to: "{{ groups['server'][0] }}"
+      run_once: true
+      notify: Restart Prometheus
+  when: nomad_configure_prometheus | default(true) | bool
+
+- name: Configure Grafana dashboard for Nomad
+  block:
+    - name: Create Grafana dashboard directory
+      file:
+        path: /etc/grafana/provisioning/dashboards
+        state: directory
+        mode: '0755'
+      delegate_to: "{{ groups['server'][0] }}"
+      run_once: true
+
+    - name: Copy Nomad dashboard
+      template:
+        src: grafana_nomad_dashboard.json.j2
+        dest: /etc/grafana/provisioning/dashboards/nomad.json
+        mode: '0644'
+      delegate_to: "{{ groups['server'][0] }}"
+      run_once: true
+      notify: Restart Grafana
+  when: nomad_configure_grafana | default(true) | bool

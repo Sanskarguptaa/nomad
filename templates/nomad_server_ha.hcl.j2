@@ -1,0 +1,36 @@
+server {
+  # HA Configuration
+  bootstrap_expect = {{ groups['nomad_server'] | length }}
+  
+  # Server join configuration
+  server_join {
+    retry_join = [{{ nomad_retry_join }}]
+    retry_max = 5
+    retry_interval = "15s"
+  }
+  
+  # Raft protocol version
+  raft_protocol = 3
+  
+  # Raft multiplier controls the timing of leader elections
+  raft_multiplier = 1
+  
+  # Enable redundancy zones if configured
+  {% if nomad_redundancy_zones | default(false) %}
+  redundancy_zone = "{{ nomad_zone | default('zone1') }}"
+  {% endif %}
+  
+  # Enable upgrade migrations
+  upgrade_migration = true
+}
+
+# Autopilot configuration for automatic server management
+autopilot {
+  cleanup_dead_servers = true
+  last_contact_threshold = "200ms"
+  max_trailing_logs = 250
+  server_stabilization_time = "10s"
+  enable_redundancy_zones = {{ nomad_redundancy_zones | default(false) | lower }}
+  disable_upgrade_migration = false
+  enable_custom_upgrades = false
+}

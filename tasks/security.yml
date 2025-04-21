@@ -1,0 +1,162 @@
+---
+# Security tasks for Nomad
+
+- name: Create TLS directory
+  file:
+    path: /etc/nomad.d/tls
+    state: directory
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0750'
+  when: nomad_enable_tls | default(false) | bool
+
+- name: Generate CA certificate
+  block:
+    - name: Generate CA private key
+      openssl_privatekey:
+        path: /etc/nomad.d/tls/ca-key.pem
+        size: 4096
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0400'
+      when: nomad_generate_ca | default(false) | bool
+
+    - name: Generate CA CSR
+      openssl_csr:
+        path: /etc/nomad.d/tls/ca.csr
+        privatekey_path: /etc/nomad.d/tls/ca-key.pem
+        common_name: "Nomad CA"
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0400'
+      when: nomad_generate_ca | default(false) | bool
+
+    - name: Generate CA certificate
+      openssl_certificate:
+        path: /etc/nomad.d/tls/ca.pem
+        privatekey_path: /etc/nomad.d/tls/ca-key.pem
+        csr_path: /etc/nomad.d/tls/ca.csr
+        provider: selfsigned
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0444'
+      when: nomad_generate_ca | default(false) | bool
+  when: nomad_enable_tls | default(false) | bool and nomad_generate_ca | default(false) | bool
+
+- name: Generate server certificates
+  block:
+    - name: Generate server private key
+      openssl_privatekey:
+        path: /etc/nomad.d/tls/server-key.pem
+        size: 4096
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0400'
+
+    - name: Generate server CSR
+      openssl_csr:
+        path: /etc/nomad.d/tls/server.csr
+        privatekey_path: /etc/nomad.d/tls/server-key.pem
+        common_name: "{{ ansible_hostname }}"
+        subject_alt_name: "DNS:{{ ansible_hostname }},DNS:localhost,IP:127.0.0.1,IP:{{ ansible_host }}"
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0400'
+
+    - name: Generate server certificate
+      openssl_certificate:
+        path: /etc/nomad.d/tls/server.pem
+        privatekey_path: /etc/nomad.d/tls/server-key.pem
+        csr_path: /etc/nomad.d/tls/server.csr
+        provider: selfsigned
+        selfsigned_not_after: "+3650d"  # Valid for 10 years
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0444'
+      when: nomad_generate_ca | default(false) | bool
+
+    - name: Generate server certificate signed by CA
+      openssl_certificate:
+        path: /etc/nomad.d/tls/server.pem
+        privatekey_path: /etc/nomad.d/tls/server-key.pem
+        csr_path: /etc/nomad.d/tls/server.csr
+        provider: ownca
+        ownca_path: /etc/nomad.d/tls/ca.pem
+        ownca_privatekey_path: /etc/nomad.d/tls/ca-key.pem
+        selfsigned_not_after: "+3650d"  # Valid for 10 years
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0444'
+      when: not nomad_generate_ca | default(false) | bool
+  when: nomad_enable_tls | default(false) | bool
+
+- name: Generate client certificates
+  block:
+    - name: Generate client private key
+      openssl_privatekey:
+        path: /etc/nomad.d/tls/client-key.pem
+        size: 4096
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0400'
+
+    - name: Generate client CSR
+      openssl_csr:
+        path: /etc/nomad.d/tls/client.csr
+        privatekey_path: /etc/nomad.d/tls/client-key.pem
+        common_name: "{{ ansible_hostname }}-client"
+        subject_alt_name: "DNS:{{ ansible_hostname }},DNS:localhost,IP:127.0.0.1,IP:{{ ansible_host }}"
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0400'
+
+    - name: Generate client certificate signed by CA
+      openssl_certificate:
+        path: /etc/nomad.d/tls/client.pem
+        privatekey_path: /etc/nomad.d/tls/client-key.pem
+        csr_path: /etc/nomad.d/tls/client.csr
+        provider: ownca
+        ownca_path: /etc/nomad.d/tls/ca.pem
+        ownca_privatekey_path: /etc/nomad.d/tls/ca-key.pem
+        selfsigned_not_after: "+3650d"  # Valid for 10 years
+        owner: "{{ nomad_user }}"
+        group: "{{ nomad_group }}"
+        mode: '0444'
+      when: not nomad_generate_ca | default(false) | bool
+  when: nomad_enable_tls | default(false) | bool and nomad_is_client | default(false) | bool
+
+- name: Configure firewall for Nomad
+  block:
+    - name: Install UFW
+      apt:
+        name: ufw
+        state: present
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Allow Nomad HTTP API
+      ufw:
+        rule: allow
+        port: "4646"
+        proto: tcp
+      when: ansible_os_family == "Debian"
+
+    - name: Allow Nomad RPC
+      ufw:
+        rule: allow
+        port: "4647"
+        proto: tcp
+      when: ansible_os_family == "Debian"
+
+    - name: Allow Nomad Serf WAN
+      ufw:
+        rule: allow
+        port: "4648"
+        proto: tcp
+      when: ansible_os_family == "Debian" and nomad_is_server | default(false) | bool
+
+    - name: Enable UFW
+      ufw:
+        state: enabled
+      when: ansible_os_family == "Debian" and nomad_configure_firewall | default(false) | bool
+  when: nomad_configure_firewall | default(false) | bool

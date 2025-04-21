@@ -1,0 +1,87 @@
+---
+# Backup and disaster recovery tasks for Nomad
+
+- name: Create backup directory
+  file:
+    path: "{{ nomad_backup_dir }}"
+    state: directory
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0750'
+
+- name: Install backup dependencies
+  apt:
+    name:
+      - rsync
+      - cron
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Create backup script
+  template:
+    src: backup_nomad.sh.j2
+    dest: /usr/local/bin/backup_nomad.sh
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0750'
+
+- name: Setup cron job for regular backups
+  cron:
+    name: "Nomad backup"
+    minute: "0"
+    hour: "{{ nomad_backup_hour | default('2') }}"
+    job: "/usr/local/bin/backup_nomad.sh > /var/log/nomad_backup.log 2>&1"
+    user: "{{ nomad_user }}"
+  when: nomad_enable_scheduled_backups | default(false) | bool
+
+- name: Create restore script
+  template:
+    src: restore_nomad.sh.j2
+    dest: /usr/local/bin/restore_nomad.sh
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0750'
+
+- name: Create backup documentation
+  copy:
+    dest: "{{ nomad_backup_dir }}/README.md"
+    content: |
+      # Nomad Backup and Restore
+
+      This directory contains backups of the Nomad data directory and configuration.
+
+      ## Backup Schedule
+
+      Backups are performed daily at {{ nomad_backup_hour | default('2') }}:00 AM server time.
+
+      ## Manual Backup
+
+      To perform a manual backup, run:
+
+      ```
+      sudo /usr/local/bin/backup_nomad.sh
+      ```
+
+      ## Restore Procedure
+
+      To restore from a backup, run:
+
+      ```
+      sudo /usr/local/bin/restore_nomad.sh BACKUP_DATE
+      ```
+
+      Where `BACKUP_DATE` is the date of the backup to restore from (format: YYYY-MM-DD).
+
+      Example:
+
+      ```
+      sudo /usr/local/bin/restore_nomad.sh 2025-04-08
+      ```
+
+      ## Backup Retention
+
+      Backups are retained for {{ nomad_backup_retention_days | default('30') }} days.
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0640'

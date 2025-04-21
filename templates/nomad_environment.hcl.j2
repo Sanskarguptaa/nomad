@@ -1,0 +1,47 @@
+# Environment-specific configuration for {{ nomad_environment | default('default') }}
+
+{% if nomad_env_config.datacenter is defined %}
+datacenter = "{{ nomad_env_config.datacenter }}"
+{% endif %}
+
+{% if nomad_env_config.region is defined %}
+region = "{{ nomad_env_config.region }}"
+{% endif %}
+
+{% if nomad_env_config.node_class is defined %}
+client {
+  node_class = "{{ nomad_env_config.node_class }}"
+  
+  {% if nomad_env_config.meta is defined %}
+  meta {
+    {% for key, value in nomad_env_config.meta.items() %}
+    {{ key }} = "{{ value }}"
+    {% endfor %}
+  }
+  {% endif %}
+  
+  {% if nomad_env_config.options is defined %}
+  options {
+    {% for key, value in nomad_env_config.options.items() %}
+    "{{ key }}" = "{{ value }}"
+    {% endfor %}
+  }
+  {% endif %}
+}
+{% endif %}
+
+{% if nomad_env_config.server_options is defined and nomad_is_server | default(false) | bool %}
+server {
+  {% for key, value in nomad_env_config.server_options.items() %}
+  {{ key }} = {{ value }}
+  {% endfor %}
+}
+{% endif %}
+
+{% if nomad_env_config.limits is defined %}
+limits {
+  {% for key, value in nomad_env_config.limits.items() %}
+  {{ key }} = {{ value }}
+  {% endfor %}
+}
+{% endif %}

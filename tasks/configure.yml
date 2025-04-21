@@ -1,0 +1,70 @@
+- name: Create Nomad config directory
+  file:
+    path: /etc/nomad.d
+    state: directory
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0750'  # More secure (read/write/execute for owner, read/execute for group)
+
+- name: Ensure empty nomad.hcl exists if missing
+  file:
+    path: /etc/nomad.d/nomad.hcl
+    state: touch
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0640'
+
+- name: Copy Nomad config file content
+  template:
+    src: "{{ nomad_config_template }}"
+    dest: /etc/nomad.d/nomad.hcl
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0640'
+  notify: Restart Nomad
+
+- name: Set correct permissions on Nomad config directory
+  file:
+    path: /etc/nomad.d
+    state: directory
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0750'
+
+- name: Set correct permissions on Nomad config files
+  file:
+    path: /etc/nomad.d/nomad.hcl
+    state: file
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0640'
+
+# - name: Validate Nomad configuration
+#   command: /usr/local/bin/nomad validate /etc/nomad.d/nomad.hcl
+#   register: nomad_validate
+#   changed_when: false
+#   failed_when: nomad_validate.rc != 0
+#   notify: Restart Nomad
+
+- name: Create Nomad systemd service
+  copy:
+    dest: /etc/systemd/system/nomad.service
+    content: |
+      [Unit]
+      Description=Nomad Agent
+      Requires=network-online.target
+      After=network-online.target
+
+      [Service]
+      User={{ nomad_user }}
+      Group={{ nomad_group }}
+      Environment="NOMAD_ADDR=0.0.0.0:4646"
+      ExecStart=/usr/local/bin/nomad agent -config=/etc/nomad.d/nomad.hcl
+      ExecReload=/bin/kill -HUP $MAINPID
+      KillMode=process
+      Restart=on-failure
+      LimitNOFILE=65536
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Restart Nomad

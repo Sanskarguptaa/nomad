@@ -1,0 +1,51 @@
+---
+- name: Install unzip dependency
+  apt:
+    name: unzip
+    state: present
+    update_cache: yes
+
+- name: Create nomad user and group
+  user:
+    name: "{{ nomad_user }}"
+    system: yes
+    shell: /sbin/nologin
+
+# 🟡 FETCH LATEST VERSION DYNAMICALLY
+- name: Get latest Nomad version
+  uri:
+    url: "{{ hashicorp_api_url }}"
+    return_content: yes
+  register: nomad_version_api
+
+- name: Set fact for latest version
+  set_fact:
+    nomad_latest_version: "{{ (nomad_version_api.json.current_version | default('1.7.4')) }}"
+
+- name: Download Nomad binary
+  get_url:
+    url: "https://releases.hashicorp.com/nomad/{{ nomad_latest_version }}/nomad_{{ nomad_latest_version }}_linux_amd64.zip"
+    dest: /tmp/nomad.zip
+
+- name: Unzip Nomad binary
+  unarchive:
+    src: /tmp/nomad.zip
+    dest: /usr/local/bin/
+    remote_src: yes
+    mode: '0755'
+
+- name: Create Nomad data directory
+  file:
+    path: "{{ nomad_data_dir }}"
+    state: directory
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0755'
+
+- name: Create Nomad alloc mounts directory (Fix permission issue)
+  file:
+    path: /opt/alloc_mounts
+    state: directory
+    owner: "{{ nomad_user }}"
+    group: "{{ nomad_group }}"
+    mode: '0755'
